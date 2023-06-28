@@ -1,0 +1,78 @@
+import cv2
+import numpy as np
+
+
+dictionary = cv2.aruco.getPredefinedDictionary( cv2.aruco.DICT_6X6_250 )
+parameters = cv2.aruco.DetectorParameters() 
+detector = cv2.aruco.ArucoDetector( dictionary, parameters ) 
+marker_size = 169 
+
+CAM_CALIB = np.array(
+			[[998 , 0.0 , 640],
+			[0.0 , 998 , 360],
+			[0.0 , 0.0 , 1.0]])
+
+DIST_COEFFS = np.array([0.0,0.0,0.0,0.0,0.0])
+
+
+def localize( bbox, id, img ):
+	global marker_size
+	rvec, tvec, _ = cv2.aruco.estimatePoseSingleMarkers( bbox, marker_size, CAM_CALIB, DIST_COEFFS )
+	distance = np.sqrt( tvec[0][0][0]**2 + tvec[0][0][1]**2 + tvec[0][0][2]**2 )
+	print( "Distance: ", distance )
+	cv2.drawFrameAxes( img,CAM_CALIB, DIST_COEFFS, rvec, tvec, 40 )
+
+	# defining an arbitray point, dont include this for now
+	object_points = np.float32( [ [0,0,60] ] )
+	image_points, _ = cv2.projectPoints( object_points, rvec,tvec, CAM_CALIB, DIST_COEFFS)
+	point = (int(image_points[0][0][0]), int(image_points[0][0][1]))
+	cv2.circle(img, point, 5, (255,255,0))
+
+	#pyramid lines
+	front_left = [-30,-30,0]
+	front_right = [-30,30,0]
+	back_right = [30,30,0]
+	back_left = [30,-30,0]
+	top = [0,0,60]
+	square_base = [front_left,front_right,back_right,back_left,front_left]
+	front_side = [front_left,top,front_right]
+	back_side = [back_left,top,back_right]
+	object_line_segments = [square_base, front_side,back_side]
+	for object_points in object_line_segments:
+		image_points, _ = cv2.projectPoints(np.float32(object_points), rvec, tvec, CAM_CALIB,DIST_COEFFS)
+		print(image_points)
+		draw_points = [ ]
+		
+		for point in image_points:
+			point2d = [int(point[0][0]),int(point[0][1])]
+			draw_points.append(point2d)
+			print( point2d)
+		
+		draw_points = np.array(draw_points)
+		draw_points = draw_points.reshape((-1,1,2))
+		cv2.polylines(img,[draw_points],False,(0,0,255),2)
+
+
+capture = cv2.VideoCapture(0) #live feed, if does not work, try passing 1
+
+
+while True:
+	ret, img = capture.read()
+
+	#detect the marker
+	marker_corners, marker_id, rejected = detector.detectMarkers(img)
+	print( marker_corners )
+	cv2.aruco.drawDetectedMarkers(img, marker_corners)
+
+	for i in range( len(marker_corners) ):
+		localize( marker_corners[i], marker_id[i],img)
+
+	cv2.imshow( "frame", img)
+
+	#27 is the code for the ESC key(escape)
+	if (cv2.waitKey(1) == 27):#wait for 1 ms
+		break
+
+capture.release()
+cv2.destroyAllWindows()
+
